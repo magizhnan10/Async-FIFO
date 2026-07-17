@@ -42,6 +42,20 @@ webtalk_xsim.jou
 webtalk_xsim.log
 
 # ==========================================
+# JVM crash dumps (from Vivado's Java-based GUI)
+# ==========================================
+hs_err_pid*.dmp
+hs_err_pid*.log
+replay_pid*.log
+
+# ==========================================
+# Other simulator runtime/scratch files
+# ==========================================
+dfx_runtime.txt
+*.backup.jou
+*.backup.log
+
+# ==========================================
 # Icarus Verilog generated files
 # ==========================================
 *.vvp
