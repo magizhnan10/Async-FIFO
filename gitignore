@@ -1,0 +1,65 @@
+# ==========================================
+# Vivado project-generated files
+# ==========================================
+*.jou
+*.log
+*.str
+*.backup.log
+*.rst
+.Xil/
+*.cache/
+*.hw/
+*.ip_user_files/
+*.sim/
+*.runs/
+*.gen/
+*.srcs/sources_1/bd/
+webtalk*
+vivado*.jou
+vivado*.log
+vivado_pid*
+usage_statistics_webtalk.html
+.jobs/
+*.wcfg.bak
+
+# ==========================================
+# XSim (Vivado simulator) generated files
+# ==========================================
+xsim.dir/
+*.wdb
+*.pb
+*.vcd
+*.vdi
+*.trn
+xelab.pb
+xsim.log
+xvlog.log
+xvlog.pb
+xelab.log
+webtalk_xelab.jou
+webtalk_xelab.log
+webtalk_xsim.jou
+webtalk_xsim.log
+
+# ==========================================
+# Icarus Verilog generated files
+# ==========================================
+*.vvp
+*.out
+a.out
+
+# ==========================================
+# OS-generated files
+# ==========================================
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# ==========================================
+# Editor / IDE files
+# ==========================================
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
