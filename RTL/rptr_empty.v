@@ -1,4 +1,3 @@
-`timescale 1ns / 1ps
 module rptr_empty #(
     parameter N          = 4,
     parameter A_EMPTY_TH = 2
@@ -81,7 +80,18 @@ module rptr_empty #(
 
     always @(posedge rclk or negedge rrst_n) begin
         if (!rrst_n) begin
-            arempty <= 1'b0;
+            // DEF-003 FIX: was arempty <= 1'b0. An empty FIFO (fill=0) is
+            // always within the almost-empty threshold by definition
+            // (0 <= A_EMPTY_TH for any sane threshold), exactly mirroring
+            // why rempty resets to 1 above. Resetting to 0 left arempty
+            // reading incorrectly for several cycles after every reset,
+            // until empty_diff's combinational recompute caught up.
+            // Found via the scoreboard's Phase 2 restructuring -- the
+            // prior mis-nested check silently skipped this exact window
+            // (read-side checks gated on write activity, and idle/
+            // post-reset cycles have no writes), so this was hidden the
+            // entire time the old scoreboard structure was in place.
+            arempty <= 1'b1;
         end else begin
             arempty <= (empty_diff <= A_EMPTY_TH);
         end

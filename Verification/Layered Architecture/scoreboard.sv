@@ -5,14 +5,30 @@
 // inline flag-boundary checks, restructured as an independent class that
 // listens to monitors via mailboxes.
 //
-// Write-side and read-side are handled by two independent forever-loops
-// (legitimately independent, since they are independent data streams), but
+// Write-side and read-side are handled by two independent forever-loops,
+// each blocking on its OWN monitor's mailbox via a plain get() (not a
+// clock-aligned poll). This is safe specifically because write_monitor and
+// read_monitor each push exactly one packet per clock cycle, unconditionally
+// (see monitor_pkt.sv) -- so a blocking get() per loop iteration is already
+// aligned to the clock with no risk of ever blocking past a cycle boundary.
+//
 // EACH loop is internally atomic: for a given packet, the fill_level update
 // and the flag check against that same fill_level happen in the same
-// procedural step, with no intervening process that could observe a
-// half-updated state. This is what fixes the race present in an earlier
-// version that split data-update and flag-check into separate processes
-// reading separate mailboxes.
+// procedural step, with no intervening blocking statement that could let
+// the other loop interleave mid-update. This is what fixes the race
+// monitor_pkt.sv's own header describes from an earlier version that split
+// data-update and flag-check into separate processes reading separate
+// mailboxes.
+//
+// PHASE 2 FIX: an earlier version of this file funneled BOTH sides' flag
+// checks through a single unified polling loop, with all four flag-check
+// blocks nested inside "if (wmon.pkt_mbx.try_get(wpkt))". That silently
+// skipped every read-side flag check (rempty/arempty) on any cycle with a
+// read but no write, and made those checks read a possibly-stale rpkt left
+// over from a prior cycle when no fresh read packet had arrived. Splitting
+// into two genuinely independent get()-driven loops removes both problems
+// at the root, and is also a more direct implementation of what this
+// header already claimed the design did.
 //
 // fill_level is shared mutable state between the two loops (a write
 // increments it, a read decrements it) -- in SystemVerilog, ordinary
@@ -42,16 +58,29 @@ class scoreboard;
   int error_count;
   int check_count;
 
+  // PHASE 2 FIX: single source of truth for the flag-boundary settle
+  // margin, replacing four independent hardcoded "3"s. Derived from
+  // sync_2ff.v's actual synchronizer depth (2 flops) plus one cycle of
+  // combinational settle allowance -- not an arbitrary number. Exposed as
+  // a constructor arg (with that derivation as the default) so it stays
+  // adjustable without hunting through four separate comparisons, and so
+  // it's the one place that needs revisiting once Phase 3 moves margins
+  // from cycle counts to time units for independent clocks.
+  localparam int SYNC_STAGES = 2;
+  int SETTLE_MARGIN;
+
   function new(write_monitor wmon_, read_monitor rmon_,
-               int depth_, int a_full_th_, int a_empty_th_);
-    wmon        = wmon_;
-    rmon        = rmon_;
-    DEPTH       = depth_;
-    A_FULL_TH   = a_full_th_;
-    A_EMPTY_TH  = a_empty_th_;
-    fill_level  = 0;
-    error_count = 0;
-    check_count = 0;
+               int depth_, int a_full_th_, int a_empty_th_,
+               int settle_margin_ = SYNC_STAGES + 1);
+    wmon          = wmon_;
+    rmon          = rmon_;
+    DEPTH         = depth_;
+    A_FULL_TH     = a_full_th_;
+    A_EMPTY_TH    = a_empty_th_;
+    SETTLE_MARGIN = settle_margin_;
+    fill_level    = 0;
+    error_count   = 0;
+    check_count   = 0;
   endfunction
 
   task check(bit cond, string msg);
@@ -66,78 +95,77 @@ class scoreboard;
 
 
  task run();
-    wmon_pkt_t wpkt;
-    rmon_pkt_t rpkt;
-    
-    forever begin
-      // Wait for a clock edge, plus margin to let monitors push their packets
-      @(posedge wmon.vif.clk);
-      #2; 
-      
-      // 1. Evaluate Reads (decrement fill_level)
-      if (rmon.pkt_mbx.try_get(rpkt)) begin
-        if (rpkt.accepted) begin
-          if (ref_queue.size() == 0) begin
-            check(0, "read observed as accepted but reference queue is empty");
-          end else begin
-            bit [7:0] expected = ref_queue.pop_front();
-            fill_level--;
-            check((rpkt.data === expected), 
-                  $sformatf("rdata mismatch: got 0x%0h expected 0x%0h", rpkt.data, expected));
+    // PHASE 2 FIX: two independent blocking loops instead of one shared
+    // clock-aligned poll. Each blocks on its own monitor's mailbox; since
+    // each monitor pushes exactly one packet per cycle unconditionally,
+    // this stays clock-aligned with no risk of drift, while making each
+    // side's flag checks run on every cycle of THAT side's activity,
+    // regardless of whether the other side had a transaction this cycle.
+    fork
+      begin : write_side
+        wmon_pkt_t wpkt;
+        forever begin
+          wmon.pkt_mbx.get(wpkt);
+
+          if (wpkt.accepted) begin
+            ref_queue.push_back(wpkt.data);
+            fill_level++;
           end
-        end
-        // We will update the flag checks below
-      end
 
-      // 2. Evaluate Writes (increment fill_level)
-      if (wmon.pkt_mbx.try_get(wpkt)) begin
-        if (wpkt.accepted) begin
-          ref_queue.push_back(wpkt.data);
-          fill_level++;
-        end
-        // We will update the flag checks below
-        // Pessimistic Read Flag Checks
-      if (rpkt.accepted || rpkt.rempty != rmon.vif.rempty) begin
-        if (fill_level == 0) 
-            check((rpkt.rempty === 1'b1), "rempty must be 1 when completely empty");
-        else if (fill_level > 3) 
-            check((rpkt.rempty === 1'b0), "rempty must be 0 after sync delay has passed");
-      end
-
-      // Pessimistic Almost-Empty Flag Checks (arempty) -- same shape as
-      // the rempty checks above, shifted by A_EMPTY_TH: "must be 1" is
-      // checked at/inside the threshold itself (no margin needed, since
-      // arempty tracks in lockstep once settled, same as rempty does
-      // post-fix); "must be 0" keeps a 3-level margin above the
-      // threshold so a transiently-stale synchronized pointer during
-      // concurrent r+w can't produce a false FAIL.
-      if (rpkt.accepted || rpkt.arempty != rmon.vif.arempty) begin
-        if (fill_level <= A_EMPTY_TH)
-            check((rpkt.arempty === 1'b1), "arempty must be 1 at/below almost-empty threshold");
-        else if (fill_level > A_EMPTY_TH + 3)
-            check((rpkt.arempty === 1'b0), "arempty must be 0 well above almost-empty threshold");
-      end
-
-      // Pessimistic Write Flag Checks
-      if (wpkt.accepted || wpkt.wfull != wmon.vif.wfull) begin
-        if (fill_level >= DEPTH) 
+          // Write Flag Checks -- evaluated every cycle a write packet
+          // arrives (i.e. every cycle), using this cycle's own packet.
+          if (fill_level >= DEPTH)
             check((wpkt.wfull === 1'b1), "wfull must be 1 when completely full");
-        else if (fill_level < DEPTH - 3) 
+          else if (fill_level < DEPTH - SETTLE_MARGIN)
             check((wpkt.wfull === 1'b0), "wfull must be 0 after sync delay has passed");
-      end
 
-      // Pessimistic Almost-Full Flag Checks (awfull) -- mirror of the
-      // arempty checks above, shifted by A_FULL_TH from the hard-full
-      // boundary.
-      if (wpkt.accepted || wpkt.awfull != wmon.vif.awfull) begin
-        if (fill_level >= DEPTH - A_FULL_TH)
+          // Almost-Full Flag Checks (awfull) -- mirror of the arempty
+          // checks below, shifted by A_FULL_TH from the hard-full boundary.
+          if (fill_level >= DEPTH - A_FULL_TH)
             check((wpkt.awfull === 1'b1), "awfull must be 1 at/above almost-full threshold");
-        else if (fill_level < DEPTH - A_FULL_TH - 3)
+          else if (fill_level < DEPTH - A_FULL_TH - SETTLE_MARGIN)
             check((wpkt.awfull === 1'b0), "awfull must be 0 well below almost-full threshold");
+        end
       end
-      
+      begin : read_side
+        rmon_pkt_t rpkt;
+        forever begin
+          rmon.pkt_mbx.get(rpkt);
+
+          if (rpkt.accepted) begin
+            if (ref_queue.size() == 0) begin
+              check(0, "read observed as accepted but reference queue is empty");
+            end else begin
+              bit [7:0] expected = ref_queue.pop_front();
+              fill_level--;
+              check((rpkt.data === expected),
+                    $sformatf("rdata mismatch: got 0x%0h expected 0x%0h", rpkt.data, expected));
+            end
+          end
+
+          // Read Flag Checks -- evaluated every cycle a read packet
+          // arrives (i.e. every cycle), using this cycle's own packet.
+          // No longer gated on write activity, and no longer reading a
+          // possibly-stale packet from a prior cycle.
+          if (fill_level == 0)
+            check((rpkt.rempty === 1'b1), "rempty must be 1 when completely empty");
+          else if (fill_level > SETTLE_MARGIN)
+            check((rpkt.rempty === 1'b0), "rempty must be 0 after sync delay has passed");
+
+          // Almost-Empty Flag Checks (arempty) -- same shape as the
+          // rempty checks above, shifted by A_EMPTY_TH: "must be 1" is
+          // checked at/inside the threshold itself (no margin needed,
+          // since arempty tracks in lockstep once settled, same as
+          // rempty does); "must be 0" keeps a SETTLE_MARGIN-level margin
+          // above the threshold so a transiently-stale synchronized
+          // pointer during concurrent r+w can't produce a false FAIL.
+          if (fill_level <= A_EMPTY_TH)
+            check((rpkt.arempty === 1'b1), "arempty must be 1 at/below almost-empty threshold");
+          else if (fill_level > A_EMPTY_TH + SETTLE_MARGIN)
+            check((rpkt.arempty === 1'b0), "arempty must be 0 well above almost-empty threshold");
+        end
       end
-    end
+    join_none
   endtask
 
   // Call between test scenarios to clear accumulated state. The monitors'
