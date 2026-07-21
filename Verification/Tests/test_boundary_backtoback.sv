@@ -65,7 +65,7 @@ class test_boundary_backtoback;
       e.wagent.seqr.put(t);
     end
     // Margin here is fine -- it's after the burst, not at the boundary.
-    repeat (DEPTH + OVERSHOOT + 6) @(posedge vif.clk);
+    repeat (DEPTH + OVERSHOOT + 6) @(posedge vif.wclk);
 
     // -----------------------------------------------------------------
     // Drain everything the scoreboard's reference model thinks is
@@ -78,7 +78,7 @@ class test_boundary_backtoback;
       t = new(OP_READ, 0, 0);
       e.ragent.seqr.put(t);
     end
-    repeat (DEPTH + 6) @(posedge vif.clk);
+    repeat (DEPTH + 6) @(posedge vif.wclk);
 
     // -----------------------------------------------------------------
     // Refill so there's something to underflow past.
@@ -88,7 +88,7 @@ class test_boundary_backtoback;
       t = new(OP_WRITE, (8'hA0 + i[7:0]), 0);
       e.wagent.seqr.put(t);
     end
-    repeat (DEPTH + 6) @(posedge vif.clk);
+    repeat (DEPTH + 6) @(posedge vif.wclk);
 
     // -----------------------------------------------------------------
     // Underflow probe: mirror of the overflow probe on the read side --
@@ -101,7 +101,7 @@ class test_boundary_backtoback;
       t = new(OP_READ, 0, 0);
       e.ragent.seqr.put(t);
     end
-    repeat (DEPTH + OVERSHOOT + 6) @(posedge vif.clk);
+    repeat (DEPTH + OVERSHOOT + 6) @(posedge vif.wclk);
 
     e.sb.report();
   endtask

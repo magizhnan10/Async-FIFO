@@ -39,7 +39,7 @@ class fifo_sanity_test;
     vif.w_en  = 1'b0;
     vif.r_en  = 1'b0;
     vif.wdata = '0;
-    @(posedge vif.clk);
+    @(posedge vif.wclk);
     #1;
   endtask
 
@@ -67,7 +67,7 @@ class fifo_sanity_test;
 
     // Wait for all DEPTH writes to actually be driven before moving on.
     // Each write takes exactly 1 cycle once issued; add margin.
-    repeat (DEPTH + 6) @(posedge vif.clk);
+    repeat (DEPTH + 6) @(posedge vif.wclk);
 
     // ---------------------------------------------------------------
     // Write-while-full: issue one more write; driver will assert w_en
@@ -77,7 +77,7 @@ class fifo_sanity_test;
     $display("--- Attempting write while full (should be ignored) ---");
     t = new(OP_WRITE, 8'hFF, 0);
     e.wagent.seqr.put(t);
-    repeat (2) @(posedge vif.clk);
+    repeat (2) @(posedge vif.wclk);
 
     // ---------------------------------------------------------------
     // Drain to empty: push DEPTH read transactions.
@@ -87,7 +87,7 @@ class fifo_sanity_test;
       t = new(OP_READ, 0, 0);
       e.ragent.seqr.put(t);
     end
-    repeat (DEPTH + 6) @(posedge vif.clk);
+    repeat (DEPTH + 6) @(posedge vif.wclk);
 
     // ---------------------------------------------------------------
     // Read-while-empty: should be ignored.
@@ -95,7 +95,7 @@ class fifo_sanity_test;
     $display("--- Attempting read while empty (should be ignored) ---");
     t = new(OP_READ, 0, 0);
     e.ragent.seqr.put(t);
-    repeat (2) @(posedge vif.clk);
+    repeat (2) @(posedge vif.wclk);
 
     e.sb.report();
     // tb_top accumulates error_count and calls $finish after all scenarios.

@@ -1,4 +1,4 @@
- // =============================================================================
+// =============================================================================
 // test_full_boundary.sv  -  Scenario 3: Recovery from the full boundary
 //
 // What it targets:
@@ -66,7 +66,7 @@ class test_full_boundary;
       wt = new(OP_WRITE, i[7:0], 0);
       e.wagent.seqr.put(wt);
     end
-    repeat (DEPTH + 2) @(posedge vif.clk);
+    repeat (DEPTH + 2) @(posedge vif.wclk);
 
     for (int i = 0; i < REPEAT; i++) begin
       $display("  -- full boundary hit %0d --", i + 1);
@@ -79,11 +79,11 @@ class test_full_boundary;
       rt = new(OP_READ,  0, 0);
       e.wagent.seqr.put(wt);
       e.ragent.seqr.put(rt);
-      @(posedge vif.clk);
+      @(posedge vif.wclk);
 
       // Step 2: wait for the freed slot to propagate through the
       // synchronizer, then explicitly confirm wfull has deasserted.
-      repeat (SETTLE_CYCLES) @(posedge vif.clk);
+      repeat (SETTLE_CYCLES) @(posedge vif.wclk);
       e.sb.check((vif.wfull === 1'b0),
         "wfull must deassert within SETTLE_CYCLES of a freeing read at the full boundary");
 
@@ -94,10 +94,10 @@ class test_full_boundary;
       // ref_queue check will catch it as a data mismatch.
       wt = new(OP_WRITE, (8'hB8 + i) % 256, 0);
       e.wagent.seqr.put(wt);
-      repeat (2) @(posedge vif.clk);
+      repeat (2) @(posedge vif.wclk);
     end
 
-    repeat (4) @(posedge vif.clk);
+    repeat (4) @(posedge vif.wclk);
 
     // Drain everything remaining.
     $display("  -- draining --");
@@ -105,7 +105,7 @@ class test_full_boundary;
       rt = new(OP_READ, 0, 0);
       e.ragent.seqr.put(rt);
     end
-    repeat (DEPTH + 2) @(posedge vif.clk);
+    repeat (DEPTH + 2) @(posedge vif.wclk);
 
     $display("  full_boundary scenario done");
   endtask

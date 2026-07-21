@@ -48,14 +48,14 @@ class test_wraparound;
         t = new(OP_WRITE, (base_data + i) % 256, 0);
         e.wagent.seqr.put(t);
       end
-      repeat (DEPTH + 2) @(posedge vif.clk);
+      repeat (DEPTH + 2) @(posedge vif.wclk);
 
       // Drain to empty.
       for (int i = 0; i < DEPTH; i++) begin
         t = new(OP_READ, 0, 0);
         e.ragent.seqr.put(t);
       end
-      repeat (DEPTH + 2) @(posedge vif.clk);
+      repeat (DEPTH + 2) @(posedge vif.wclk);
     end
 
     $display("  wraparound scenario done");

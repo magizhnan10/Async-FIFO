@@ -83,7 +83,7 @@ class test_threshold_flags;
       wt = new(OP_WRITE, i[7:0], 0);
       e.wagent.seqr.put(wt);
     end
-    repeat (full_fill_start + 2) @(posedge vif.clk);
+    repeat (full_fill_start + 2) @(posedge vif.wclk);
 
     $display("  -- toggling across awfull threshold --");
     for (int i = 0; i < TOGGLES; i++) begin
@@ -92,7 +92,7 @@ class test_threshold_flags;
       // a short margin is enough.
       wt = new(OP_WRITE, (8'hD0 + i) % 256, 0);
       e.wagent.seqr.put(wt);
-      repeat (2) @(posedge vif.clk);
+      repeat (2) @(posedge vif.wclk);
       e.sb.check((vif.awfull === 1'b1),
         "awfull must assert when fill reaches DEPTH-A_FULL_TH (write direction)");
 
@@ -102,8 +102,8 @@ class test_threshold_flags;
       // counted from the read's own capturing edge, not from put().
       rt = new(OP_READ, 0, 0);
       e.ragent.seqr.put(rt);
-      @(posedge vif.clk);
-      repeat (SETTLE_CYCLES) @(posedge vif.clk);
+      @(posedge vif.wclk);
+      repeat (SETTLE_CYCLES) @(posedge vif.wclk);
       e.sb.check((vif.awfull === 1'b0),
         "awfull must deassert within SETTLE_CYCLES after fill drops back below DEPTH-A_FULL_TH");
     end
@@ -115,7 +115,7 @@ class test_threshold_flags;
       rt = new(OP_READ, 0, 0);
       e.ragent.seqr.put(rt);
     end
-    repeat (full_fill_start + 2) @(posedge vif.clk);
+    repeat (full_fill_start + 2) @(posedge vif.wclk);
 
     // ---------------------------------------------------------------
     // arempty threshold exercise:
@@ -128,7 +128,7 @@ class test_threshold_flags;
       wt = new(OP_WRITE, (8'hE0 + i) % 256, 0);
       e.wagent.seqr.put(wt);
     end
-    repeat (A_EMPTY_TH + 4) @(posedge vif.clk);
+    repeat (A_EMPTY_TH + 4) @(posedge vif.wclk);
 
     $display("  -- toggling across arempty threshold --");
     for (int i = 0; i < TOGGLES; i++) begin
@@ -137,7 +137,7 @@ class test_threshold_flags;
       // a short margin is enough.
       rt = new(OP_READ, 0, 0);
       e.ragent.seqr.put(rt);
-      repeat (2) @(posedge vif.clk);
+      repeat (2) @(posedge vif.wclk);
       e.sb.check((vif.arempty === 1'b1),
         "arempty must assert when fill drops to A_EMPTY_TH (read direction)");
 
@@ -147,8 +147,8 @@ class test_threshold_flags;
       // counted from the write's own capturing edge, not from put().
       wt = new(OP_WRITE, (8'hE8 + i) % 256, 0);
       e.wagent.seqr.put(wt);
-      @(posedge vif.clk);
-      repeat (SETTLE_CYCLES) @(posedge vif.clk);
+      @(posedge vif.wclk);
+      repeat (SETTLE_CYCLES) @(posedge vif.wclk);
       e.sb.check((vif.arempty === 1'b0),
         "arempty must deassert within SETTLE_CYCLES after fill rises back above A_EMPTY_TH");
     end
@@ -159,7 +159,7 @@ class test_threshold_flags;
       rt = new(OP_READ, 0, 0);
       e.ragent.seqr.put(rt);
     end
-    repeat (A_EMPTY_TH + 4) @(posedge vif.clk);
+    repeat (A_EMPTY_TH + 4) @(posedge vif.wclk);
 
     // Definitive closing check -- nothing should be left behind, in
     // either section.

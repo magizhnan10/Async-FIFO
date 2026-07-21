@@ -49,7 +49,7 @@ class test_concurrent_rw;
       wt = new(OP_WRITE, i[7:0], 0);
       e.wagent.seqr.put(wt);
     end
-    repeat (half + 2) @(posedge vif.clk);
+    repeat (half + 2) @(posedge vif.wclk);
 
     // Sustained simultaneous r+w. Push one write and one read transaction
     // per iteration -- both drivers are blocked on get() and will pick up
@@ -63,9 +63,9 @@ class test_concurrent_rw;
       e.ragent.seqr.put(rt);
       // Stagger by one cycle so drivers don't build up a large backlog
       // that makes scoreboard fill_level accounting harder to trace.
-      @(posedge vif.clk);
+      @(posedge vif.wclk);
     end
-    repeat (4) @(posedge vif.clk);
+    repeat (4) @(posedge vif.wclk);
 
     // Drain the remaining half.
     $display("  -- draining residual half --");
@@ -73,7 +73,7 @@ class test_concurrent_rw;
       rt = new(OP_READ, 0, 0);
       e.ragent.seqr.put(rt);
     end
-    repeat (half + 2) @(posedge vif.clk);
+    repeat (half + 2) @(posedge vif.wclk);
 
     $display("  concurrent_rw scenario done");
   endtask
