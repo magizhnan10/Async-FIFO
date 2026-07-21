@@ -34,7 +34,7 @@ class write_driver;
       seqr.trans_mbx.get(t);
 
       // honor requested idle delay before driving
-      repeat (t.delay_cy) @(posedge vif.clk);
+      repeat (t.delay_cy) @(posedge vif.wclk);
 
       // Drive for exactly one cycle. If the FIFO happens to be full,
       // we still issue the request -- this lets a "write while full"
@@ -43,7 +43,7 @@ class write_driver;
       // the monitor from the DUT's actual pin behavior.
       vif.wdata <= t.data;
       vif.w_en  <= 1'b1;
-      @(posedge vif.clk);
+      @(posedge vif.wclk);
       vif.w_en  <= 1'b0;
     end
   endtask

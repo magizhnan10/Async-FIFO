@@ -38,13 +38,13 @@ class write_monitor;
 
     forever begin
       // Stable pre-edge sample point.
-      @(negedge vif.clk);
+      @(negedge vif.wclk);
       pre_wfull = vif.wfull;
       pre_w_en  = vif.w_en;
       pre_wdata = vif.wdata;
 
       // Edge that actually applies this state.
-      @(posedge vif.clk);
+      @(posedge vif.wclk);
       #1; // allow post-edge flag updates to settle
 
       pkt.accepted = pre_w_en && !pre_wfull;

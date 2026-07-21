@@ -36,11 +36,22 @@ class env;
   // here since reset is a testbench-level concern that lives above the agent
   // layer. The scoreboard's mailboxes are flushed to prevent stale packets
   // from a prior scenario bleeding into the next scenario's checks.
+  //
+  // PHASE 3: fork...join across both domains instead of a single clk wait,
+  // so this works for any wclk/rclk period pair without assuming which one
+  // is faster -- the effective hold/settle time becomes max(4 or 12 periods
+  // of wclk, same of rclk) automatically.
   task reset(ref logic rst_n);
     rst_n = 1'b0;
-    repeat (4) @(posedge vif.clk);
+    fork
+      repeat (4) @(posedge vif.wclk);
+      repeat (4) @(posedge vif.rclk);
+    join
     rst_n = 1'b1;
-    repeat (12) @(posedge vif.clk);
+    fork
+      repeat (12) @(posedge vif.wclk);
+      repeat (12) @(posedge vif.rclk);
+    join
     sb.reset();
   endtask
 

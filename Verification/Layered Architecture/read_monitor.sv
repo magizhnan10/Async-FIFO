@@ -25,11 +25,11 @@ class read_monitor;
     rmon_pkt_t pkt;
 
     forever begin
-      @(negedge vif.clk);
+      @(negedge vif.rclk);
       pre_rempty = vif.rempty;
       pre_r_en   = vif.r_en;
 
-      @(posedge vif.clk);
+      @(posedge vif.rclk);
       #1; // allow rdata/flags to settle post-edge
 
       pkt.accepted = pre_r_en && !pre_rempty;

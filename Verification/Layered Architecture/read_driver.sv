@@ -21,10 +21,10 @@ class read_driver;
     fifo_transaction t;
     forever begin
       seqr.trans_mbx.get(t);
-      repeat (t.delay_cy) @(posedge vif.clk);
+      repeat (t.delay_cy) @(posedge vif.rclk);
 
       vif.r_en <= 1'b1;
-      @(posedge vif.clk);
+      @(posedge vif.rclk);
       vif.r_en <= 1'b0;
     end
   endtask

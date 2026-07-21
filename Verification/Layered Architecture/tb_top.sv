@@ -2,9 +2,13 @@
 // tb_top.sv
 //
 // Top-level module. Responsibilities deliberately kept minimal:
-//   - generate clk/rst_n (still single-clock per Step 3 of the plan --
-//     wclk and rclk both tie to the same `clk` net, wrst_n/rrst_n both tie
-//     to the same `rst_n` net, exactly as in the original directed TB)
+//   - generate wclk/rclk as two INDEPENDENT clock generators (Phase 3),
+//     with independently configurable periods -- placeholder values below
+//     are matched (10ns/10ns) as a checkpoint that the plumbing change
+//     itself didn't break anything, independent of any ratio-skew
+//     behavior. Change WCLK_PERIOD/RCLK_PERIOD to any values to exercise
+//     a real skew; nothing else in this file, or in env.sv's reset task,
+//     assumes a particular ratio or which domain is faster.
 //   - instantiate the interface and the DUT
 //   - construct env + test, kick off run()
 //
@@ -24,26 +28,46 @@ module tb_top;
   localparam DEPTH       = (1 << N);
   localparam A_FULL_TH   = 2;
   localparam A_EMPTY_TH  = 2;
-  localparam CLK_PERIOD  = 10;
 
-  logic clk;
+  // PHASE 3: independent periods, deliberately not required to be equal
+  // or to be integer multiples of one another. Placeholder checkpoint
+  // values below are matched (10/10); change independently to exercise
+  // real ratio skew once the matched-period regression is confirmed clean.
+  localparam WCLK_PERIOD = 10;
+  localparam RCLK_PERIOD = 10;
+
+  logic wclk;
+  logic rclk;
   logic rst_n;
 
-  initial clk = 1'b0;
-  always #(CLK_PERIOD/2) clk = ~clk;
+  initial wclk = 1'b0;
+  always #(WCLK_PERIOD/2.0) wclk = ~wclk;
 
+  initial rclk = 1'b0;
+  always #(RCLK_PERIOD/2.0) rclk = ~rclk;
+
+  // Reset assertion window sized to guarantee at least 4 edges on BOTH
+  // domains regardless of which period is larger -- fork...join (not
+  // join_none) blocks until both branches complete, so the effective
+  // hold time is max(4*WCLK_PERIOD, 4*RCLK_PERIOD) automatically, with
+  // no hardcoded assumption about which clock is faster.
   initial begin
     rst_n = 1'b0;
-    repeat (4) @(posedge clk);
+    fork
+      repeat (4) @(posedge wclk);
+      repeat (4) @(posedge rclk);
+    join
     rst_n = 1'b1;
   end
 
-  fifo_if #(.W(W)) vif (.clk(clk));
+  fifo_if #(.W(W)) vif (.wclk(wclk), .rclk(rclk));
 
   // -----------------------------------------------------------------
   // DUT instantiation -- against the documented async_fifo interface.
-  // wclk/rclk and wrst_n/rrst_n both tied to the single clk/rst_n nets,
-  // matching the directed TB's single-clock sanity configuration.
+  // wclk/rclk now genuinely independent (Phase 3); wrst_n/rrst_n both
+  // still tied to the single async rst_n net, since reset synchronization
+  // itself is unaffected by this phase -- rst_sync.v already handles each
+  // domain's own synchronization independently downstream of arst_n.
   // -----------------------------------------------------------------
   async_fifo #(
     .W         (W),
@@ -51,8 +75,8 @@ module tb_top;
     .A_FULL_TH (A_FULL_TH),
     .A_EMPTY_TH(A_EMPTY_TH)
   ) dut (
-    .wclk    (clk),
-    .rclk    (clk),
+    .wclk    (wclk),
+    .rclk    (rclk),
     .arst_n  (rst_n),
     .w_en    (vif.w_en),
     .r_en    (vif.r_en),
@@ -77,11 +101,12 @@ module tb_top;
   // itself lives inside a dynamically-allocated class object (e.sb), so
   // it isn't reliably addable to a waveform directly -- this plain
   // module-scope variable is, since it's part of the static hierarchy.
-  // Sampled a few time units after the scoreboard's own #2 post-edge
-  // update (see scoreboard.sv run()), so it reflects the just-updated
-  // value within the same cycle rather than lagging by one.
+  // Sampled off wclk purely as a debug-viewing convenience (fill_level
+  // itself is updated by both domains independently via the scoreboard's
+  // two loops -- this mirror doesn't need to be cycle-exact on both,
+  // only close enough to be readable on a waveform).
   int dbg_fill_level;
-  always @(posedge clk) begin
+  always @(posedge wclk) begin
     #3;
     if (e != null) dbg_fill_level = e.sb.fill_level;
   end
@@ -91,14 +116,26 @@ module tb_top;
   initial begin
     total_errors = 0;
 
-    // Wait for reset to be released and align to a clean posedge before
-    // starting agents -- avoids delta-cycle ambiguity at driver/monitor startup.
+    // Wait for reset to be released, then settle on BOTH domains before
+    // starting agents -- avoids delta-cycle ambiguity at driver/monitor
+    // startup regardless of which clock is faster. fork...join blocks
+    // until both branches complete, so this is max(12*WCLK_PERIOD,
+    // 12*RCLK_PERIOD) automatically, with no assumption about ratio.
     wait (rst_n === 1'b1);
-    repeat (12)@(posedge clk);
+    fork
+      repeat (12) @(posedge wclk);
+      repeat (12) @(posedge rclk);
+    join
 
     e = new(vif, DEPTH, A_FULL_TH, A_EMPTY_TH);
     e.run();
-    @(posedge clk); // let agents' forever loops reach their first wait point
+
+    // Let both agents' forever loops reach their first wait point,
+    // regardless of which domain is faster.
+    fork
+      @(posedge wclk);
+      @(posedge rclk);
+    join
 
     // ------------------------------------------------------------------
     // Test 0: basic sanity (reset -> fill -> drain)

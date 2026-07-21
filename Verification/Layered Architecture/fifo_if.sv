@@ -6,17 +6,20 @@
 // that's what lets a class method reach into the testbench from outside the
 // module hierarchy.
 //
-// Stage 3 note: clk is a single shared clock here (wclk == rclk == clk).
-// This interface is intentionally written as if it might someday be split
-// into separate wclk/rclk and wrst_n/rrst_n (Step 5 of the plan) -- but for
-// now everything ties to the same clk/rst_n so the single-clock sanity
-// behavior carries over unchanged.
+// PHASE 3: wclk/rclk are now independent ports, replacing the single shared
+// clk used through Stage 3. Every other signal is unchanged -- only the
+// clocking split. write_driver.sv/write_monitor.sv now clock off wclk,
+// read_driver.sv/read_monitor.sv off rclk, matching the DUT's own domain
+// boundaries for the first time in the testbench (the RTL itself always
+// had wclk/rclk as genuinely separate ports; only the testbench tied them
+// together, as an intentional Stage 3 simplification).
 // =============================================================================
 
 interface fifo_if #(
   parameter W = 8
 ) (
-  input logic clk
+  input logic wclk,
+  input logic rclk
 );
 
   logic            w_en;
@@ -33,10 +36,6 @@ interface fifo_if #(
   // to these pins presents a defined value from power-up (even if just
   // tied to 0 at reset) -- leaving them X here was purely a simulation
   // modeling gap, not something the DUT should be expected to tolerate.
-  // (Found via wptr_full_sva.sv's a_no_x_awfull firing well after reset
-  // had genuinely released -- wgray_next's ternary on wen, itself X
-  // while w_en was undriven, was propagating into awfull's registered
-  // comparison every cycle.)
   initial begin
     w_en = 1'b0;
     r_en = 1'b0;
