@@ -33,8 +33,13 @@ module tb_top;
   // or to be integer multiples of one another. Placeholder checkpoint
   // values below are matched (10/10); change independently to exercise
   // real ratio skew once the matched-period regression is confirmed clean.
+  // PHASE 3 STEP 6: real skew, deliberately coprime (10/17, not a clean
+  // 2:1 or other integer-multiple ratio) -- an integer-multiple ratio can
+  // accidentally hide phase-alignment bugs that a coprime ratio won't,
+  // since the two clocks' edges would otherwise re-align on a short,
+  // predictable cadence.
   localparam WCLK_PERIOD = 10;
-  localparam RCLK_PERIOD = 10;
+  localparam RCLK_PERIOD = 17;
 
   logic wclk;
   logic rclk;
