@@ -87,7 +87,10 @@ class fifo_sanity_test;
       t = new(OP_READ, 0, 0);
       e.ragent.seqr.put(t);
     end
-    repeat (DEPTH + 6) @(posedge vif.wclk);
+    // Read completion is paced by read_driver on rclk, not wclk. With
+    // independent, skewed clock periods (Phase 3) a wclk-counted wait no
+    // longer bounds read-side completion -- must wait on rclk here.
+    repeat (DEPTH + 6) @(posedge vif.rclk);
 
     // ---------------------------------------------------------------
     // Read-while-empty: should be ignored.
@@ -95,7 +98,7 @@ class fifo_sanity_test;
     $display("--- Attempting read while empty (should be ignored) ---");
     t = new(OP_READ, 0, 0);
     e.ragent.seqr.put(t);
-    repeat (2) @(posedge vif.wclk);
+    repeat (2) @(posedge vif.rclk);
 
     e.sb.report();
     // tb_top accumulates error_count and calls $finish after all scenarios.

@@ -83,17 +83,24 @@ class test_empty_boundary;
 
       // Step 2: wait for the new entry to propagate through the
       // synchronizer, then explicitly confirm rempty has deasserted.
-      repeat (SETTLE_CYCLES) @(posedge vif.wclk);
+      // rempty is registered in the READ (rclk) domain, so the settle
+      // wait must be counted in rclk cycles, not wclk. The extra +2
+      // margin covers the write being captured anywhere within one
+      // WCLK_PERIOD before it even starts crossing into the rclk domain.
+      repeat (SETTLE_CYCLES + 2) @(posedge vif.rclk);
       e.sb.check((vif.rempty === 1'b0),
         "rempty must deassert within SETTLE_CYCLES of a filling write at the empty boundary");
 
       // Step 3: drain the one entry now that rempty is genuinely low.
       rt = new(OP_READ, 0, 0);
       e.ragent.seqr.put(rt);
-      repeat (2) @(posedge vif.wclk);
+      repeat (2) @(posedge vif.rclk);
     end
 
-    repeat (4) @(posedge vif.wclk);
+    fork
+      repeat (4) @(posedge vif.wclk);
+      repeat (4) @(posedge vif.rclk);
+    join
 
     // Step 4: definitive closing check -- nothing should be left behind.
     // This is exactly the check that would have caught the original

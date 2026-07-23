@@ -41,7 +41,22 @@ class env;
   // so this works for any wclk/rclk period pair without assuming which one
   // is faster -- the effective hold/settle time becomes max(4 or 12 periods
   // of wclk, same of rclk) automatically.
+  //
+  // PHASE 4 FIX: a test scenario's own "wait for drain" margin undershooting
+  // by even one transaction leaves that transaction still sitting, unread,
+  // in the read (or write) sequencer's trans_mbx when reset() is called.
+  // The driver isn't stopped by reset -- it just blocks in-flight until
+  // rst_n releases, then happily dequeues and drives that leftover
+  // transaction against the NEXT scenario's freshly-reset DUT state, well
+  // after the scoreboard has already been reset to expect nothing. That
+  // surfaces downstream as "read observed as accepted but reference queue
+  // is empty" and cascading data mismatches, often several scenarios later
+  // once the leftover transaction happens to get serviced. Flushing both
+  // sequencers' trans_mbx here, in addition to the monitor mailboxes,
+  // makes reset() a hard boundary regardless of whether a scenario's own
+  // drain margin was exactly right.
   task reset(ref logic rst_n);
+    fifo_transaction t;
     rst_n = 1'b0;
     fork
       repeat (4) @(posedge vif.wclk);
@@ -53,6 +68,8 @@ class env;
       repeat (12) @(posedge vif.rclk);
     join
     sb.reset();
+    while (wagent.seqr.trans_mbx.try_get(t)) ;
+    while (ragent.seqr.trans_mbx.try_get(t)) ;
   endtask
 
   task run();

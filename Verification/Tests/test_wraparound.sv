@@ -50,12 +50,13 @@ class test_wraparound;
       end
       repeat (DEPTH + 2) @(posedge vif.wclk);
 
-      // Drain to empty.
+      // Drain to empty. Read-side: rclk-paced, since read_driver processes
+      // reads at rclk cadence, not wclk.
       for (int i = 0; i < DEPTH; i++) begin
         t = new(OP_READ, 0, 0);
         e.ragent.seqr.put(t);
       end
-      repeat (DEPTH + 2) @(posedge vif.wclk);
+      repeat (DEPTH + 2) @(posedge vif.rclk);
     end
 
     $display("  wraparound scenario done");

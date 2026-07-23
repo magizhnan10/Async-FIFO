@@ -51,21 +51,44 @@ class test_concurrent_rw;
     end
     repeat (half + 2) @(posedge vif.wclk);
 
-    // Sustained simultaneous r+w. Push one write and one read transaction
-    // per iteration -- both drivers are blocked on get() and will pick up
-    // their respective transactions at the same posedge, producing genuine
-    // same-cycle w_en && r_en.
+    // Sustained simultaneous r+w. Previously this pushed one write AND one
+    // read per wclk edge, assuming both drivers would pick them up on
+    // "the same cycle." That assumption doesn't hold with independent
+    // clocks: write_driver consumes at wclk pace (fast), but read_driver
+    // only consumes at rclk pace (slower here), so writes were racing
+    // ahead of reads over the course of the loop -- the FIFO was actually
+    // drifting toward full rather than staying at half, silently dropping
+    // writes once it hit the boundary, which none of this test's checks
+    // were designed to expect. Instead, each side now paces its own push
+    // loop on its own clock, so both sides issue exactly SUSTAINED_CYCLES
+    // transactions over the same real-time window -- preserving the
+    // intended near-constant fill level without requiring same-edge
+    // synchronization that two independent clocks can't provide.
     $display("  -- sustained concurrent r+w --");
-    for (int i = 0; i < SUSTAINED_CYCLES; i++) begin
-      wt = new(OP_WRITE, (8'hA0 + i) % 256, 0);
-      rt = new(OP_READ,  0, 0);
-      e.wagent.seqr.put(wt);
-      e.ragent.seqr.put(rt);
-      // Stagger by one cycle so drivers don't build up a large backlog
-      // that makes scoreboard fill_level accounting harder to trace.
-      @(posedge vif.wclk);
-    end
-    repeat (4) @(posedge vif.wclk);
+    fork
+      begin : write_stream
+        for (int i = 0; i < SUSTAINED_CYCLES; i++) begin
+          wt = new(OP_WRITE, (8'hA0 + i) % 256, 0);
+          e.wagent.seqr.put(wt);
+          @(posedge vif.wclk);
+        end
+      end
+      begin : read_stream
+        for (int i = 0; i < SUSTAINED_CYCLES; i++) begin
+          rt = new(OP_READ, 0, 0);
+          e.ragent.seqr.put(rt);
+          @(posedge vif.rclk);
+        end
+      end
+    join
+    // Small settle margin on both clocks: each side's push loop now paces
+    // itself at that side's own consumption rate, so there's no backlog
+    // buildup to drain here the way there was before -- just the usual
+    // couple of cycles for the last transaction's effects to land.
+    fork
+      repeat (4) @(posedge vif.wclk);
+      repeat (4) @(posedge vif.rclk);
+    join
 
     // Drain the remaining half.
     $display("  -- draining residual half --");
@@ -73,7 +96,8 @@ class test_concurrent_rw;
       rt = new(OP_READ, 0, 0);
       e.ragent.seqr.put(rt);
     end
-    repeat (half + 2) @(posedge vif.wclk);
+    // Read-side drain: rclk-paced.
+    repeat (half + 2) @(posedge vif.rclk);
 
     $display("  concurrent_rw scenario done");
   endtask

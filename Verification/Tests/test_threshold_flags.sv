@@ -103,7 +103,10 @@ class test_threshold_flags;
       rt = new(OP_READ, 0, 0);
       e.ragent.seqr.put(rt);
       @(posedge vif.wclk);
-      repeat (SETTLE_CYCLES) @(posedge vif.wclk);
+      // awfull is wclk-native, so counting in wclk cycles is correct;
+      // +2 extra covers the read being captured anywhere within one
+      // RCLK_PERIOD before it crosses into the wclk domain.
+      repeat (SETTLE_CYCLES + 2) @(posedge vif.wclk);
       e.sb.check((vif.awfull === 1'b0),
         "awfull must deassert within SETTLE_CYCLES after fill drops back below DEPTH-A_FULL_TH");
     end
@@ -115,7 +118,8 @@ class test_threshold_flags;
       rt = new(OP_READ, 0, 0);
       e.ragent.seqr.put(rt);
     end
-    repeat (full_fill_start + 2) @(posedge vif.wclk);
+    // Read-side drain: rclk-paced.
+    repeat (full_fill_start + 2) @(posedge vif.rclk);
 
     // ---------------------------------------------------------------
     // arempty threshold exercise:
@@ -137,7 +141,9 @@ class test_threshold_flags;
       // a short margin is enough.
       rt = new(OP_READ, 0, 0);
       e.ragent.seqr.put(rt);
-      repeat (2) @(posedge vif.wclk);
+      // arempty is rclk-native, and this is the same-domain direction
+      // (read pointer only, no synchronizer involved) -- count on rclk.
+      repeat (2) @(posedge vif.rclk);
       e.sb.check((vif.arempty === 1'b1),
         "arempty must assert when fill drops to A_EMPTY_TH (read direction)");
 
@@ -148,7 +154,9 @@ class test_threshold_flags;
       wt = new(OP_WRITE, (8'hE8 + i) % 256, 0);
       e.wagent.seqr.put(wt);
       @(posedge vif.wclk);
-      repeat (SETTLE_CYCLES) @(posedge vif.wclk);
+      // arempty is rclk-native; +2 extra covers the write being captured
+      // anywhere within one WCLK_PERIOD before it crosses into rclk.
+      repeat (SETTLE_CYCLES + 2) @(posedge vif.rclk);
       e.sb.check((vif.arempty === 1'b0),
         "arempty must deassert within SETTLE_CYCLES after fill rises back above A_EMPTY_TH");
     end
@@ -159,7 +167,8 @@ class test_threshold_flags;
       rt = new(OP_READ, 0, 0);
       e.ragent.seqr.put(rt);
     end
-    repeat (A_EMPTY_TH + 4) @(posedge vif.wclk);
+    // Read-side drain: rclk-paced.
+    repeat (A_EMPTY_TH + 4) @(posedge vif.rclk);
 
     // Definitive closing check -- nothing should be left behind, in
     // either section.

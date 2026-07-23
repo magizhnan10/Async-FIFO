@@ -83,7 +83,11 @@ class test_full_boundary;
 
       // Step 2: wait for the freed slot to propagate through the
       // synchronizer, then explicitly confirm wfull has deasserted.
-      repeat (SETTLE_CYCLES) @(posedge vif.wclk);
+      // wfull is registered in the WRITE (wclk) domain, so counting in
+      // wclk cycles is correct here; the extra +2 margin covers the read
+      // being captured anywhere within one RCLK_PERIOD before it starts
+      // crossing into the wclk domain (RCLK_PERIOD > WCLK_PERIOD).
+      repeat (SETTLE_CYCLES + 2) @(posedge vif.wclk);
       e.sb.check((vif.wfull === 1'b0),
         "wfull must deassert within SETTLE_CYCLES of a freeing read at the full boundary");
 
@@ -97,7 +101,10 @@ class test_full_boundary;
       repeat (2) @(posedge vif.wclk);
     end
 
-    repeat (4) @(posedge vif.wclk);
+    fork
+      repeat (4) @(posedge vif.wclk);
+      repeat (4) @(posedge vif.rclk);
+    join
 
     // Drain everything remaining.
     $display("  -- draining --");
@@ -105,7 +112,8 @@ class test_full_boundary;
       rt = new(OP_READ, 0, 0);
       e.ragent.seqr.put(rt);
     end
-    repeat (DEPTH + 2) @(posedge vif.wclk);
+    // Read-side drain: rclk-paced.
+    repeat (DEPTH + 2) @(posedge vif.rclk);
 
     $display("  full_boundary scenario done");
   endtask

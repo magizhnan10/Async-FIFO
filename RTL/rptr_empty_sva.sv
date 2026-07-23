@@ -66,9 +66,13 @@ module rptr_empty_sva #(
   // ---------------------------------------------------------------------
   // Property 4: reset recovery. Note rempty's defined reset value is 1
   // (FIFO starts empty), not 0 -- mirrors rptr_empty.v's own reset branch.
+  // arempty's reset value is also 1 (DEF-003 fix: an empty FIFO is always
+  // within the almost-empty threshold by definition) -- this assertion
+  // previously still expected the pre-DEF-003 value of 0 here, which no
+  // longer matches what rptr_empty.v is deliberately coded to do.
   // ---------------------------------------------------------------------
   property p_reset_recovery;
-    @(posedge rclk) $rose(rrst_n) |-> (rptr_gray == '0 && rempty == 1'b1 && arempty == 1'b0);
+    @(posedge rclk) $rose(rrst_n) |-> (rptr_gray == '0 && rempty == 1'b1 && arempty == 1'b1);
   endproperty
   a_reset_recovery: assert property (p_reset_recovery)
     else $error("rptr_gray/rempty/arempty not in defined state immediately after rrst_n release");

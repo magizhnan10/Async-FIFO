@@ -78,7 +78,9 @@ class test_boundary_backtoback;
       t = new(OP_READ, 0, 0);
       e.ragent.seqr.put(t);
     end
-    repeat (DEPTH + 6) @(posedge vif.wclk);
+    // Read-side drain: pace the wait on rclk, since read_driver processes
+    // reads at rclk cadence, not wclk.
+    repeat (DEPTH + 6) @(posedge vif.rclk);
 
     // -----------------------------------------------------------------
     // Refill so there's something to underflow past.
@@ -101,7 +103,8 @@ class test_boundary_backtoback;
       t = new(OP_READ, 0, 0);
       e.ragent.seqr.put(t);
     end
-    repeat (DEPTH + OVERSHOOT + 6) @(posedge vif.wclk);
+    // Read-side burst drain: rclk-paced, same reasoning as above.
+    repeat (DEPTH + OVERSHOOT + 6) @(posedge vif.rclk);
 
     e.sb.report();
   endtask
