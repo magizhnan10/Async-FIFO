@@ -13,6 +13,18 @@
 // decision (don't issue a transaction that the protocol can't accept this
 // cycle), not a *checking* decision. Whether wfull behaved correctly is the
 // monitor/scoreboard's job to judge, not the driver's.
+//
+// PHASE 5 FIX: this loop used to run completely oblivious to rst_n. A
+// transaction already pulled off trans_mbx (or sitting mid-delay_cy wait)
+// when env::reset() asserted rst_n would still get driven for its one
+// cycle regardless -- landing as a spurious extra write right at a
+// scenario boundary, one cycle before the next scenario's own stimulus
+// starts. That showed up as a clean, constant one-slot data shift on the
+// very next drain (every expected value off by exactly one). Checking
+// vif.rst_n right before driving -- the same net env::reset() controls --
+// and dropping the transaction instead of issuing it closes that gap.
+// Deasserting w_en in the drop case too, in case a PRIOR transaction's
+// assertion was still pending across the reset edge.
 // =============================================================================
 
 class write_driver;
@@ -35,6 +47,15 @@ class write_driver;
 
       // honor requested idle delay before driving
       repeat (t.delay_cy) @(posedge vif.wclk);
+
+      // PHASE 5 FIX: reset may have asserted while this transaction sat
+      // in the mailbox or during the delay_cy wait above. Drop it rather
+      // than driving a stale transaction against a DUT that's mid-reset
+      // (or about to be) -- see header comment.
+      if (!vif.rst_n) begin
+        vif.w_en <= 1'b0;
+        continue;
+      end
 
       // Drive for exactly one cycle. If the FIFO happens to be full,
       // we still issue the request -- this lets a "write while full"

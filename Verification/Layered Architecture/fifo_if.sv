@@ -13,13 +13,24 @@
 // boundaries for the first time in the testbench (the RTL itself always
 // had wclk/rclk as genuinely separate ports; only the testbench tied them
 // together, as an intentional Stage 3 simplification).
+//
+// PHASE 5 FIX: added rst_n, mirroring the testbench-level async reset net
+// (the same one env::reset() drives). write_driver.sv/read_driver.sv now
+// check this before driving a dequeued transaction, so a transaction that
+// was in flight (already pulled off its sequencer's mailbox) when reset()
+// asserts no longer sneaks a spurious write/read into the DUT during or
+// immediately after the reset window. Flushing the sequencer mailboxes
+// (env::reset()'s existing PHASE 4 FIX) only ever covered transactions
+// still QUEUED, not ones already dequeued and mid-drive -- this closes
+// that gap from the driver side instead.
 // =============================================================================
 
 interface fifo_if #(
   parameter W = 8
 ) (
   input logic wclk,
-  input logic rclk
+  input logic rclk,
+  input logic rst_n
 );
 
   logic            w_en;

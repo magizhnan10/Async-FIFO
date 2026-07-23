@@ -65,7 +65,7 @@ module tb_top;
     rst_n = 1'b1;
   end
 
-  fifo_if #(.W(W)) vif (.wclk(wclk), .rclk(rclk));
+  fifo_if #(.W(W)) vif (.wclk(wclk), .rclk(rclk), .rst_n(rst_n));
 
   // -----------------------------------------------------------------
   // DUT instantiation -- against the documented async_fifo interface.

@@ -55,9 +55,26 @@ class env;
   // sequencers' trans_mbx here, in addition to the monitor mailboxes,
   // makes reset() a hard boundary regardless of whether a scenario's own
   // drain margin was exactly right.
+  //
+  // PHASE 5 FIX: the sequencer flush used to happen only here, AFTER the
+  // full 4+12-cycle assert/settle window -- 16 cycles during which
+  // write_driver/read_driver's forever loops kept running unmodified and
+  // could dequeue and drive a leftover transaction against the DUT mid- or
+  // just-post-reset. Flushing immediately on assertion (right below) closes
+  // most of that window at the source, by removing anything still QUEUED
+  // before the drivers get another chance to pull from it. This is
+  // deliberately paired with write_driver.sv/read_driver.sv's own new
+  // rst_n check, which covers what this flush still can't: a transaction
+  // the driver had ALREADY dequeued (mid-delay_cy, or about to drive) at
+  // the instant rst_n dropped. Between the two, no in-flight transaction
+  // can cross a reset boundary and land as a spurious extra write/read.
+  // The post-settle flush stays too, as a second pass in case anything
+  // legitimately queued up during the settle window itself.
   task reset(ref logic rst_n);
     fifo_transaction t;
     rst_n = 1'b0;
+    while (wagent.seqr.trans_mbx.try_get(t)) ;
+    while (ragent.seqr.trans_mbx.try_get(t)) ;
     fork
       repeat (4) @(posedge vif.wclk);
       repeat (4) @(posedge vif.rclk);
